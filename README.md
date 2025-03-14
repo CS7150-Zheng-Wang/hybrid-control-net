@@ -3,9 +3,7 @@
 
 Official code implementation for "Distilling Diversity and Control in Diffusion Models".
 
-<div align='center'>
-<img src='images/intro.png'>
-</div>
+
 
 
 ## Overview
