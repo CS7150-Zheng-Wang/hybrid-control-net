@@ -7,6 +7,7 @@ Official code implementation for "Distilling Diversity and Control in Diffusion 
 <img src='images/intro.png'>
 </div>
 
+
 ## Overview
 
 Distilled diffusion models generate images in far fewer timesteps but suffer from "mode collapse" - producing similar outputs despite different random seeds. Our work addresses this critical limitation through:
