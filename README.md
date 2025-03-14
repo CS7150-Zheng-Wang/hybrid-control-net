@@ -4,7 +4,7 @@
 Official code implementation for "Distilling Diversity and Control in Diffusion Models".
 
 <div align='center'>
-<img src='images/intro.png'>
+<img src='images/intro_fig.png'>
 </div>
 
 ## Overview
