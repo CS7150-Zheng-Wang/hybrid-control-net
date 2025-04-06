@@ -670,15 +670,22 @@ def call_control_net(
         torch.cuda.empty_cache()
 
     if not output_type == "latent":
-        image = self.vae.decode(
-            # CHANGE: Changed latents to dt_latents
+        # For standard visualization (noisy latents)
+        standard_image = self.vae.decode(
+            latents.to(latents.dtype) / self.vae.config.scaling_factor,
+            return_dict=False,
+            generator=generator,
+        )[0]
+        standard_image, has_nsfw_concept = self.run_safety_checker(
+            standard_image, device, prompt_embeds.dtype
+        )
+
+        # For DT visualization (predicted original sample)
+        dt_image = self.vae.decode(
             dt_latents.to(latents.dtype) / self.vae.config.scaling_factor,
             return_dict=False,
             generator=generator,
         )[0]
-        image, has_nsfw_concept = self.run_safety_checker(
-            image, device, prompt_embeds.dtype
-        )
     else:
         image = latents
         has_nsfw_concept = None
@@ -688,16 +695,20 @@ def call_control_net(
     else:
         do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-    image = self.image_processor.postprocess(
-        image, output_type=output_type, do_denormalize=do_denormalize
+    standard_image = self.image_processor.postprocess(
+        standard_image, output_type=output_type, do_denormalize=do_denormalize
+    )
+    dt_image = self.image_processor.postprocess(
+        dt_image, output_type=output_type, do_denormalize=do_denormalize
     )
 
     # Offload all models
     self.maybe_free_model_hooks()
 
     if not return_dict:
-        return (image, has_nsfw_concept)
+        return ([standard_image, dt_image], has_nsfw_concept)
 
+    # Return both image types in the images field
     return StableDiffusionPipelineOutput(
-        images=image, nsfw_content_detected=has_nsfw_concept
+        images=[standard_image, dt_image], nsfw_content_detected=has_nsfw_concept
     )
