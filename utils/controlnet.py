@@ -207,8 +207,10 @@ def call_control_net(
         ]
     ] = None,
     callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-    # CHANGE: Added run_timesteps to the function signature
-    run_timesteps=None,
+    standard_sd_pipeline=None,  # New Parameter: The standard SD pipeline to switch to
+    run_controlnet_till_step: Optional[
+        int
+    ] = None,  # New Parameter: When to switch to standard SD
     **kwargs,
 ):
     r"""
@@ -346,6 +348,9 @@ def call_control_net(
         if is_compiled_module(self.controlnet)
         else self.controlnet
     )
+
+    # CHANGE: Store UNet for later use
+    unet = self.unet
 
     # align format for control guidance
     if not isinstance(control_guidance_start, list) and isinstance(
@@ -536,86 +541,131 @@ def call_control_net(
             keeps[0] if isinstance(controlnet, ControlNetModel) else keeps
         )
 
+    # CHANGE: Determine when to switch from ControlNet to standard SD
+    if run_controlnet_till_step is None:
+        run_controlnet_till_step = len(timesteps)
+
+    # CHANGE: Ensure the standard SD pipeline is correctly set up (if till_step is set)
+    if run_controlnet_till_step < len(timesteps) and standard_sd_pipeline is None:
+        raise ValueError("Must provide a standard_sd_pipeline to switch to")
+
+    # CHANGE: Ensure the standard SD pipeline is sharing the same scheduler
+    standard_sd_pipeline.scheduler = self.scheduler
+
     # 8. Denoising loop
     num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
     is_unet_compiled = is_compiled_module(self.unet)
     is_controlnet_compiled = is_compiled_module(self.controlnet)
     is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
+
     with self.progress_bar(total=num_inference_steps) as progress_bar:
+        # CHANGE: Use from_timestep and till_timestep to slice the timesteps
         for i, t in enumerate(timesteps):
             if self.interrupt:
                 continue
+            # Check if we should switch to standard SD pipeline
+            if i >= run_controlnet_till_step:
+                # Switch to standard SD pipeline for remaining steps
+                if i == run_controlnet_till_step:
+                    print(f"Switching to standard SD pipeline at step {i}")
+                    # Transfer necessary parameters to standard pipeline
+                    standard_sd_pipeline.to(device)
 
-            # Relevant thread:
-            # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-            if (
-                is_unet_compiled and is_controlnet_compiled
-            ) and is_torch_higher_equal_2_1:
-                torch._inductor.cudagraph_mark_step_begin()
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = (
-                torch.cat([latents] * 2)
-                if self.do_classifier_free_guidance
-                else latents
-            )
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-            # controlnet(s) inference
-            if guess_mode and self.do_classifier_free_guidance:
-                # Infer ControlNet only for the conditional batch.
-                control_model_input = latents
-                control_model_input = self.scheduler.scale_model_input(
-                    control_model_input, t
+                # Run standard SD pipeline step
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if self.do_classifier_free_guidance
+                    else latents
                 )
-                controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-            else:
-                control_model_input = latent_model_input
-                controlnet_prompt_embeds = prompt_embeds
-
-            if isinstance(controlnet_keep[i], list):
-                cond_scale = [
-                    c * s
-                    for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])
-                ]
-            else:
-                controlnet_cond_scale = controlnet_conditioning_scale
-                if isinstance(controlnet_cond_scale, list):
-                    controlnet_cond_scale = controlnet_cond_scale[0]
-                cond_scale = controlnet_cond_scale * controlnet_keep[i]
-
-            down_block_res_samples, mid_block_res_sample = self.controlnet(
-                control_model_input,
-                t,
-                encoder_hidden_states=controlnet_prompt_embeds,
-                controlnet_cond=image,
-                conditioning_scale=cond_scale,
-                guess_mode=guess_mode,
-                return_dict=False,
-            )
-
-            if guess_mode and self.do_classifier_free_guidance:
-                # Inferred ControlNet only for the conditional batch.
-                # To apply the output of ControlNet to both the unconditional and conditional batches,
-                # add 0 to the unconditional batch to keep it unchanged.
-                down_block_res_samples = [
-                    torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples
-                ]
-                mid_block_res_sample = torch.cat(
-                    [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
                 )
 
-            # predict the noise residual
-            noise_pred = self.unet(
-                latent_model_input,
-                t,
-                encoder_hidden_states=prompt_embeds,
-                timestep_cond=timestep_cond,
-                cross_attention_kwargs=self.cross_attention_kwargs,
-                down_block_additional_residuals=down_block_res_samples,
-                mid_block_additional_residual=mid_block_res_sample,
-                added_cond_kwargs=added_cond_kwargs,
-                return_dict=False,
-            )[0]
+                # Predict noise using standard SD UNet
+                noise_pred = standard_sd_pipeline.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
+            else:
+                # Relevant thread:
+                # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
+                # Use ControlNet for the first part of denoising
+                if (
+                    is_unet_compiled and is_controlnet_compiled
+                ) and is_torch_higher_equal_2_1:
+                    torch._inductor.cudagraph_mark_step_begin()
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if self.do_classifier_free_guidance
+                    else latents
+                )
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
+
+                # controlnet(s) inference
+                if guess_mode and self.do_classifier_free_guidance:
+                    # Infer ControlNet only for the conditional batch.
+                    control_model_input = latents
+                    control_model_input = self.scheduler.scale_model_input(
+                        control_model_input, t
+                    )
+                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                else:
+                    control_model_input = latent_model_input
+                    controlnet_prompt_embeds = prompt_embeds
+
+                if isinstance(controlnet_keep[i], list):
+                    cond_scale = [
+                        c * s
+                        for c, s in zip(
+                            controlnet_conditioning_scale, controlnet_keep[i]
+                        )
+                    ]
+                else:
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
+
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    control_model_input,
+                    t,
+                    encoder_hidden_states=controlnet_prompt_embeds,
+                    controlnet_cond=image,
+                    conditioning_scale=cond_scale,
+                    guess_mode=guess_mode,
+                    return_dict=False,
+                )
+
+                if guess_mode and self.do_classifier_free_guidance:
+                    # Inferred ControlNet only for the conditional batch.
+                    # To apply the output of ControlNet to both the unconditional and conditional batches,
+                    # add 0 to the unconditional batch to keep it unchanged.
+                    down_block_res_samples = [
+                        torch.cat([torch.zeros_like(d), d])
+                        for d in down_block_res_samples
+                    ]
+                    mid_block_res_sample = torch.cat(
+                        [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
+                    )
+
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    timestep_cond=timestep_cond,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    down_block_additional_residuals=down_block_res_samples,
+                    mid_block_additional_residual=mid_block_res_sample,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
+                )[0]
 
             # perform guidance
             if self.do_classifier_free_guidance:
@@ -671,7 +721,14 @@ def call_control_net(
 
     if not output_type == "latent":
         # For standard visualization (noisy latents)
-        standard_image = self.vae.decode(
+        if (run_controlnet_till_step) < len(timesteps):
+            vae = standard_sd_pipeline.vae
+            image_processor = standard_sd_pipeline.image_processor
+        else:
+            vae = self.vae
+            image_processor = self.image_processor
+
+        standard_image = vae.decode(
             latents.to(latents.dtype) / self.vae.config.scaling_factor,
             return_dict=False,
             generator=generator,
@@ -681,7 +738,7 @@ def call_control_net(
         )
 
         # For DT visualization (predicted original sample)
-        dt_image = self.vae.decode(
+        dt_image = vae.decode(
             dt_latents.to(latents.dtype) / self.vae.config.scaling_factor,
             return_dict=False,
             generator=generator,
@@ -695,10 +752,11 @@ def call_control_net(
     else:
         do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-    standard_image = self.image_processor.postprocess(
+    standard_image = image_processor.postprocess(
         standard_image, output_type=output_type, do_denormalize=do_denormalize
     )
-    dt_image = self.image_processor.postprocess(
+
+    dt_image = image_processor.postprocess(
         dt_image, output_type=output_type, do_denormalize=do_denormalize
     )
 
