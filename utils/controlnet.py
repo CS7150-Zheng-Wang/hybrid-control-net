@@ -550,7 +550,8 @@ def call_control_net(
         raise ValueError("Must provide a standard_sd_pipeline to switch to")
 
     # CHANGE: Ensure the standard SD pipeline is sharing the same scheduler
-    standard_sd_pipeline.scheduler = self.scheduler
+    if standard_sd_pipeline is not None:
+        standard_sd_pipeline.scheduler = self.scheduler
 
     # 8. Denoising loop
     num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
