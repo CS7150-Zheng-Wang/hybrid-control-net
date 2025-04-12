@@ -36,6 +36,7 @@ def generate_improved_images(
     guidance_scale=7.5,
     weights_dtype=torch.float16,
     device="cuda:0",
+    seed=42,
     num_images_per_prompt=1,
 ):
     if control_type == "canny":
@@ -46,6 +47,10 @@ def generate_improved_images(
         controlnet_model_id = "lllyasviel/sd-controlnet-openpose"
     else:
         controlnet_model_id = f"lllyasviel/sd-controlnet-{control_type}"
+
+    generator = torch.Generator(
+        device="cuda" if torch.cuda.is_available() else "cpu"
+    ).manual_seed(seed)
 
     # 1. Load models
     # Load ControlNet model
@@ -59,6 +64,7 @@ def generate_improved_images(
         controlnet=controlnet,
         torch_dtype=weights_dtype,
         safety_checker=None,
+        generator=generator,
     )
 
     controlnet_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
@@ -71,6 +77,7 @@ def generate_improved_images(
         sd_model_id,
         torch_dtype=weights_dtype,
         safety_checker=None,
+        generator=generator,
     )
 
     # Move models to device
@@ -239,6 +246,14 @@ if __name__ == "__main__":
         default=None,
     )
 
+    parser.add_argument(
+        "--seed",
+        help="seed for random number generator",
+        type=int,
+        required=False,
+        default=42,
+    )
+
     args = parser.parse_args()
 
     if args.dtype == "fp16":
@@ -272,4 +287,5 @@ if __name__ == "__main__":
         weights_dtype=weights_dtype,
         device=args.device,
         num_images_per_prompt=args.num_images_per_prompt,
+        seed=args.seed,
     )

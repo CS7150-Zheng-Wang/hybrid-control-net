@@ -1,0 +1,16 @@
+file_path,timestamp,runtime_seconds,control_type,switch_step,num_inference_steps,guidance_scale,conditioning_scale
+canny,95.3079,canny,10
+canny,144.1246,canny,20
+canny,156.0378,canny,30
+canny,168.8344,canny,40
+canny,182.0482,canny,50
+seg_2,184.1742,seg,10
+seg_2,190.4646,seg,20
+seg_2,213.6826,seg,30
+seg_2,146.5857,seg,40
+seg_2,229.5676,seg,50
+pose,384.7061,pose,10
+pose,405.4507,pose,20
+pose,435.8374,pose,30
+pose,458.5222,pose,40
+pose,469.3668,pose,50

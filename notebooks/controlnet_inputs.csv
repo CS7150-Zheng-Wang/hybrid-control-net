@@ -1,0 +1,16 @@
+file_path,prompt,control_type,run_controlnet_till_step,guidance_scale,conditioning_scale,num_inference_steps
+canny,"A photorealistic recreation of 'Girl with a Pearl Earring', detailed lighting, Vermeer style painting, 8k",canny,10,7.5,1.0,50
+canny,"A photorealistic recreation of 'Girl with a Pearl Earring', detailed lighting, Vermeer style painting, 8k",canny,20,7.5,1.0,50
+canny,"A photorealistic recreation of 'Girl with a Pearl Earring', detailed lighting, Vermeer style painting, 8k",canny,30,7.5,1.0,50
+canny,"A photorealistic recreation of 'Girl with a Pearl Earring', detailed lighting, Vermeer style painting, 8k",canny,40,7.5,1.0,50
+canny,"A photorealistic recreation of 'Girl with a Pearl Earring', detailed lighting, Vermeer style painting, 8k",canny,50,7.5,1.0,50
+pose,"A full body portrait of a person standing with arms outstretched, professional photography, studio lighting, 8k",pose,10,7.5,1.0,50
+pose,"A full body portrait of a person standing with arms outstretched, professional photography, studio lighting, 8k",pose,20,7.5,1.0,50
+pose,"A full body portrait of a person standing with arms outstretched, professional photography, studio lighting, 8k",pose,30,7.5,1.0,50
+pose,"A full body portrait of a person standing with arms outstretched, professional photography, studio lighting, 8k",pose,40,7.5,1.0,50
+pose,"A full body portrait of a person standing with arms outstretched, professional photography, studio lighting, 8k",pose,50,7.5,1.0,50
+seg_2,"A detailed marble sculpture of a nude classical Greek youth sitting beside a large eagle, displayed in an art museum with warm ambient lighting, high resolution, fine details, neoclassical art, 8k, masterpiece, museum exhibition",seg,10,7.5,1.0,50
+seg_2,"A detailed marble sculpture of a nude classical Greek youth sitting beside a large eagle, displayed in an art museum with warm ambient lighting, high resolution, fine details, neoclassical art, 8k, masterpiece, museum exhibition",seg,20,7.5,1.0,50
+seg_2,"A detailed marble sculpture of a nude classical Greek youth sitting beside a large eagle, displayed in an art museum with warm ambient lighting, high resolution, fine details, neoclassical art, 8k, masterpiece, museum exhibition",seg,30,7.5,1.0,50
+seg_2,"A detailed marble sculpture of a nude classical Greek youth sitting beside a large eagle, displayed in an art museum with warm ambient lighting, high resolution, fine details, neoclassical art, 8k, masterpiece, museum exhibition",seg,40,7.5,1.0,50
+seg_2,"A detailed marble sculpture of a nude classical Greek youth sitting beside a large eagle, displayed in an art museum with warm ambient lighting, high resolution, fine details, neoclassical art, 8k, masterpiece, museum exhibition",seg,50,7.5,1.0,50
